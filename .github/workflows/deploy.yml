@@ -1,4 +1,4 @@
-name: Rollout MIG on Push
+name: Rollout MIG with Zero Downtime
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  recreate-one:
+  rollout:
     runs-on: ubuntu-latest
 
     permissions:
@@ -30,15 +30,10 @@ jobs:
           project_id: micro-answer-469207-r4
           export_default_credentials: true
 
-      - name: Recreate one VM in MIG
+      - name: Rollout MIG (zero downtime)
         run: |
-          # pick the first instance from the MIG
-          INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
+          gcloud compute instance-groups managed rolling-action replace wp-mig \
             --zone=us-central1-c \
-            --format="value(instance)" \
-            --limit=1)
-
-          echo "Recreating $INSTANCE ..."
-          gcloud compute instance-groups managed recreate-instances wp-mig \
-            --zone=us-central1-c \
-            --instances=$INSTANCE
+            --max-surge=1 \
+            --max-unavailable=0 \
+            --replacement-method=substitute
