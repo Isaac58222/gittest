@@ -1,24 +1,170 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<title>Welcome to nginx!</title>
-<style>
-html { color-scheme: light dark; }
-body { width: 35em; margin: 0 auto;
-font-family: Tahoma, Verdana, Arial, sans-serif; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo Testing Site</title>
+  <meta name="description" content="A simple, single-file demo website for testing and proof-of-concept." />
+  <style>
+    :root{--accent:#2563eb;--muted:#6b7280;--card:#ffffff;--bg:#f3f4f6}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:var(--bg);color:#111}
+    header{background:linear-gradient(90deg,#fff 0%,#f8fafc 100%);border-bottom:1px solid #e6edf3}
+    .container{max-width:1000px;margin:0 auto;padding:24px}
+    .nav{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:700}
+    .brand .logo{width:40px;height:40px;border-radius:8px;background:var(--accent);display:inline-block}
+    nav ul{list-style:none;padding:0;margin:0;display:flex;gap:12px}
+    nav a{color:var(--muted);text-decoration:none;padding:8px;border-radius:6px}
+    .btn{background:var(--accent);color:white;padding:8px 14px;border-radius:8px;text-decoration:none}
+
+    /* hero */
+    .hero{display:grid;grid-template-columns:1fr 360px;gap:28px;align-items:center;padding:48px 0}
+    .card{background:var(--card);padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(17,24,39,0.06)}
+    h1{margin:0 0 12px;font-size:28px}
+    p.lead{margin:0;color:var(--muted)}
+
+    /* features */
+    .features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:18px}
+    .feature{padding:18px;border-radius:10px;background:linear-gradient(180deg,#fff,#fbfdff);border:1px solid #eef4ff}
+    .feature h3{margin:0 0 6px;font-size:16px}
+    .feature p{margin:0;color:var(--muted);font-size:14px}
+
+    /* gallery */
+    .gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+    .thumb{height:80px;border-radius:8px;background:#e6eefc;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+
+    /* contact */
+    form{display:grid;gap:8px}
+    input,textarea{padding:10px;border-radius:8px;border:1px solid #d1d5db}
+    footer{padding:22px 0;text-align:center;color:var(--muted)}
+
+    /* responsive */
+    @media(max-width:900px){
+      .hero{grid-template-columns:1fr}
+      .features{grid-template-columns:repeat(2,1fr)}
+      .gallery{grid-template-columns:repeat(2,1fr)}
+      nav ul{display:none}
+      .mobile-show{display:inline-block}
+    }
+    @media(max-width:420px){
+      .features{grid-template-columns:1fr}
+    }
+  </style>
 </head>
 <body>
-<h1>Welcome to nginx!</h1>
-<p> edit after deployment after</p>
-<p>If you see this page, the nginx web server is successfully installed and
-working. Further configuration is required.</p>
+  <header>
+    <div class="container nav">
+      <div class="brand">
+        <span class="logo" aria-hidden></span>
+        <div>
+          <div style="font-size:14px">Demo</div>
+          <div style="font-size:12px;color:var(--muted)">Testing site</div>
+        </div>
+      </div>
 
-<p>For online documentation and support please refer to
-<a href="http://nginx.org/">nginx.org</a>.<br/>
-Commercial support is available at
-<a href="http://nginx.com/">nginx.com</a>.</p>
+      <nav>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#gallery">Gallery</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </nav>
 
-<p><em>Thank you for using nginx.</em></p>
+      <div>
+        <a class="btn" href="#contact">Try it</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <div class="card">
+          <h1>Single-file demo website for testing</h1>
+          <p class="lead">This page is a compact demo you can use for functional testing, deployment checks, load balancer health probes, or nginx configuration tests. It includes a hero, features, gallery thumbnails and a contact form (no backend required).</p>
+
+          <div class="features" id="features" style="margin-top:18px">
+            <div class="feature">
+              <h3>Static & Fast</h3>
+              <p>Minimal assets, pure HTML/CSS/JS — ideal for quick tests.</p>
+            </div>
+            <div class="feature">
+              <h3>Responsive</h3>
+              <p>Works on desktop and mobile so you can test breakpoints.</p>
+            </div>
+            <div class="feature">
+              <h3>Interactive</h3>
+              <p>Includes a simple form validation and client-side behavior.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside>
+        <div class="card">
+          <h3>Quick actions</h3>
+          <p style="color:var(--muted);margin:8px 0 14px">Use these to verify site health and behaviour.</p>
+          <ul style="padding-left:18px;margin:0;color:var(--muted)">
+            <li>GET / -> should return 200</li>
+            <li>Check mobile layout</li>
+            <li>Submit form (client-side only)</li>
+          </ul>
+          <div style="margin-top:12px">
+            <button class="btn" id="ping">Ping</button>
+            <div id="pong" style="margin-top:10px;color:var(--muted)"></div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="card" style="margin-top:18px">
+      <h2 style="margin:0 0 10px">Gallery</h2>
+      <div class="gallery" id="gallery">
+        <div class="thumb">Image 1</div>
+        <div class="thumb">Image 2</div>
+        <div class="thumb">Image 3</div>
+        <div class="thumb">Image 4</div>
+      </div>
+    </section>
+
+    <section id="contact" class="card" style="margin-top:18px">
+      <h2 style="margin:0 0 10px">Contact / Test Form</h2>
+      <form id="demoForm" onsubmit="return false;">
+        <input id="name" placeholder="Your name" required />
+        <input id="email" placeholder="Your email" required />
+        <textarea id="message" rows="4" placeholder="Message" required></textarea>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="submit">Send</button>
+          <div id="formResult" style="color:var(--muted)"></div>
+        </div>
+      </form>
+    </section>
+
+    <footer>
+      <div style="margin-top:18px">© Demo Testing — static site • no backend • safe for POC</div>
+    </footer>
+  </main>
+
+  <script>
+    document.getElementById('ping').addEventListener('click', function(){
+      // simple client-side ping for quick checks
+      const el = document.getElementById('pong');
+      el.textContent = 'Pinging...';
+      setTimeout(()=> el.textContent = 'Pong — ' + new Date().toLocaleString(), 600);
+    });
+
+    document.getElementById('submit').addEventListener('click', function(e){
+      e.preventDefault();
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const msg = document.getElementById('message').value.trim();
+      const res = document.getElementById('formResult');
+      if(!name || !email || !msg){ res.textContent = 'Please fill all fields.'; return; }
+      // fake submit — useful to test client-side flows or automated UI tests
+      res.textContent = 'Thanks, ' + name + '! (form not sent to server)';
+    });
+  </script>
 </body>
 </html>
+
