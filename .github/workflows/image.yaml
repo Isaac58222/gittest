@@ -38,29 +38,48 @@ jobs:
             --format="value(instanceTemplate)")
           echo "old_template=$OLD_TEMPLATE" >> $GITHUB_OUTPUT
 
-      # 5. Pick one VM from MIG
+      # 5. Pick newest healthy MIG VM
       - name: Select MIG VM
         id: pick_vm
         run: |
           INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
-            --zone=us-central1-c --format="value(instance)" | head -n1)
+            --zone=us-central1-c \
+            --format="value(instance,instanceStatus)" \
+            --sort-by="~instance" \
+            | grep RUNNING | head -n1 | awk '{print $1}')
+
+          if [ -z "$INSTANCE" ]; then
+            echo "❌ No running MIG instance found"
+            exit 1
+          fi
+
+          echo "✅ Selected instance: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
 
-      # 6. Snapshot VM into image
+      # 6. Snapshot VM boot disk into image
       - name: Snapshot MIG VM
         id: snapshot
         run: |
           INSTANCE=${{ steps.pick_vm.outputs.instance }}
+
+          # Get boot disk name
           DISK_NAME=$(gcloud compute instances describe $INSTANCE \
             --zone=us-central1-c \
             --format="value(disks[0].source.basename())")
 
+          echo "📀 Using boot disk: $DISK_NAME from instance: $INSTANCE"
+
+          # Create timestamped image
           IMAGE_NAME="wp-snapshot-$(date +%Y%m%d%H%M%S)"
           gcloud compute images create $IMAGE_NAME \
             --source-disk=$DISK_NAME \
-            --source-disk-zone=us-central1-c
+            --source-disk-zone=us-central1-c \
+            --family=wp-snapshots \
+            --storage-location=us
 
+          echo "✅ Created image: $IMAGE_NAME"
           echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+
 
       # 7. Create new template (clone base + new boot disk image)
       - name: Create New Template
