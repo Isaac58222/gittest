@@ -106,9 +106,8 @@ jobs:
           NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
 
           gcloud compute instance-templates create $NEW_TEMPLATE \
-            --source-instance=$INSTANCE \
-            --source-instance-zone=us-central1-c \
-            --boot-disk-image=$IMAGE
+              --source-instance-template=wp-template
+              --image=$IMAGE
 
           echo "✅ Created new template: $NEW_TEMPLATE"
           echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
