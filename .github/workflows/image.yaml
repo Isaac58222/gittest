@@ -105,10 +105,25 @@ jobs:
 
           NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
           gcloud components update
+          # Create instance template with custom parameters + snapshot image
           gcloud compute instance-templates create $NEW_TEMPLATE \
-              --source-instance-template=wp-template
-              --global
-              --image=$IMAGE
+            --project=micro-answer-469207-r4 \
+            --machine-type=n2-standard-2 \
+            --network-interface=network=default,network-tier=PREMIUM,stack-type=IPV4_ONLY \
+            --metadata=startup-script=$'\n' \
+            --maintenance-policy=MIGRATE \
+            --provisioning-model=STANDARD \
+            --service-account=515228593779-compute@developer.gserviceaccount.com \
+            --scopes=https://www.googleapis.com/auth/cloud-platform \
+            --tags=http-server,https-server,lb-health-check \
+            --create-disk=auto-delete=yes,boot=yes,device-name=wp-test-template,image=$IMAGE,mode=rw,size=15,type=pd-balanced \
+            --no-shielded-secure-boot \
+            --shielded-vtpm \
+            --shielded-integrity-monitoring \
+            --reservation-affinity=any
+
+          echo "✅ Created new template: $NEW_TEMPLATE"
+          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
 
           echo "✅ Created new template: $NEW_TEMPLATE"
           echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
