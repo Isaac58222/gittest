@@ -92,19 +92,32 @@ jobs:
           echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
 
-      # 7. Create new template (clone base + new boot disk image)
-      - name: Create New Template
-        id: template
-        run: |
-          BASE_TEMPLATE="wp-test-template"
-          NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
+# 7. Create new template (from the VM where push happened)
+- name: Create New Template
+  id: template
+  run: |
+    # Pick the latest healthy MIG VM (the one with the pushed changes)
+    INSTANCE=${{ steps.pick_vm.outputs.instance }}
+    if [ -z "$INSTANCE" ]; then
+      echo "❌ No instance selected"
+      exit 1
+    fi
 
-          gcloud compute instance-templates create $NEW_TEMPLATE \
-            --source-instance-template=$BASE_TEMPLATE \
-            --boot-disk-image=${{ steps.snapshot.outputs.image }}
+    # Use the snapshot image created in Step 6
+    IMAGE=${{ steps.snapshot.outputs.image }}
 
-          echo "✅ Created new template: $NEW_TEMPLATE"
-          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
+    # Generate a new template name
+    NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
+
+    # Create a new instance template from the VM and snapshot
+    gcloud compute instance-templates create $NEW_TEMPLATE \
+      --source-instance=$INSTANCE \
+      --source-instance-zone=us-central1-c \
+      --boot-disk-image=$IMAGE
+
+    echo "✅ Created new template: $NEW_TEMPLATE"
+    echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
+
 
       # 8. Update MIG to use new template + rollout
       - name: Rollout MIG
