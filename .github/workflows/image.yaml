@@ -37,11 +37,16 @@ jobs:
             --zone=us-central1-c \
             --format="value(instanceTemplate)")
           echo "old_template=$OLD_TEMPLATE" >> $GITHUB_OUTPUT
+          echo "📦 Current MIG template: $OLD_TEMPLATE"
 
       # 5. Pick newest healthy MIG VM
       - name: Select MIG VM
         id: pick_vm
         run: |
+          echo "🔎 Listing MIG instances..."
+          gcloud compute instance-groups managed list-instances wp-mig \
+            --zone=us-central1-c
+
           INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
             --zone=us-central1-c \
             --format="value(instance)" \
@@ -55,7 +60,6 @@ jobs:
           echo "✅ Selected instance: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
 
-
       # 6. Snapshot VM boot disk into image
       - name: Snapshot MIG VM
         id: snapshot
@@ -66,6 +70,11 @@ jobs:
           DISK_NAME=$(gcloud compute instances describe $INSTANCE \
             --zone=us-central1-c \
             --format="value(disks[0].source.basename())")
+
+          if [ -z "$DISK_NAME" ]; then
+            echo "❌ Could not find boot disk for $INSTANCE"
+            exit 1
+          fi
 
           echo "📀 Using boot disk: $DISK_NAME from instance: $INSTANCE"
 
@@ -80,7 +89,6 @@ jobs:
           echo "✅ Created image: $IMAGE_NAME"
           echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
-
       # 7. Create new template (clone base + new boot disk image)
       - name: Create New Template
         id: template
@@ -92,6 +100,7 @@ jobs:
             --source-instance-template=$BASE_TEMPLATE \
             --boot-disk-image=${{ steps.snapshot.outputs.image }}
 
+          echo "✅ Created new template: $NEW_TEMPLATE"
           echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
 
       # 8. Update MIG to use new template + rollout
@@ -99,6 +108,8 @@ jobs:
         id: rollout
         continue-on-error: true
         run: |
+          echo "🚀 Rolling out new template: ${{ steps.template.outputs.template }}"
+
           gcloud compute instance-groups managed set-instance-template wp-mig \
             --zone=us-central1-c \
             --template=${{ steps.template.outputs.template }}
@@ -121,3 +132,5 @@ jobs:
             --zone=us-central1-c \
             --max-surge=1 \
             --max-unavailable=0
+
+          echo "✅ Rollback complete"
