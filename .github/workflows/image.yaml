@@ -22,7 +22,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           token_format: access_token
-          workload_identity_provider: projects/515228593889/locations/global/workloadIdentityPools/wp-test/providers/wp-test
+          workload_identity_provider: projects/515228593779/locations/global/workloadIdentityPools/wp-test/providers/wp-test
           service_account: wp-test@micro-answer-469207-r4.iam.gserviceaccount.com
 
       # 3. Setup gcloud
