@@ -1,0 +1,161 @@
+name: MIG Rollout from VM Snapshot
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      # 1. Checkout repo
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      # 2. Authenticate with Workload Identity Federation
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: projects/515228593779/locations/global/workloadIdentityPools/wp-test/providers/wp-test
+          service_account: wp-test@micro-answer-469207-r4.iam.gserviceaccount.com
+
+      # 3. Setup gcloud
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # 4. Capture current template (for rollback)
+      - name: Capture Current Template
+        id: old_template
+        run: |
+          OLD_TEMPLATE=$(gcloud compute instance-groups managed describe wp-mig \
+            --zone=us-central1-c \
+            --format="value(instanceTemplate)")
+          echo "old_template=$OLD_TEMPLATE" >> $GITHUB_OUTPUT
+          echo "📦 Current MIG template: $OLD_TEMPLATE"
+
+      # 5. Pick newest healthy MIG VM
+      - name: Select MIG VM
+        id: pick_vm
+        run: |
+          echo "🔎 Listing MIG instances..."
+          gcloud compute instance-groups managed list-instances wp-mig \
+            --zone=us-central1-c
+
+          # Pick the last instance (you can change sorting if needed)
+          INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
+            --zone=us-central1-c \
+            --format="value(instance.basename())" \
+            | sort | tail -n1)
+
+          if [ -z "$INSTANCE" ]; then
+            echo "❌ No MIG instance found"
+            exit 1
+          fi
+
+          echo "✅ Selected instance: $INSTANCE"
+          echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
+
+      # 6. Snapshot VM boot disk into image
+      - name: Snapshot MIG VM
+        id: snapshot
+        run: |
+          INSTANCE=${{ steps.pick_vm.outputs.instance }}
+
+          # Get boot disk name
+          DISK_NAME=$(gcloud compute instances describe $INSTANCE \
+            --zone=us-central1-c \
+            --format="value(disks[0].source.basename())")
+
+          if [ -z "$DISK_NAME" ]; then
+            echo "❌ Could not find boot disk for $INSTANCE"
+            exit 1
+          fi
+
+          echo "📀 Using boot disk: $DISK_NAME from instance: $INSTANCE"
+
+          # Create timestamped image
+          IMAGE_NAME="wp-snapshot-$(date +%Y%m%d%H%M%S)"
+          gcloud compute images create $IMAGE_NAME \
+            --source-disk=$DISK_NAME \
+            --source-disk-zone=us-central1-c \
+            --family=wp-snapshots \
+            --storage-location=us \
+            --force
+
+          echo "✅ Created image: $IMAGE_NAME"
+          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+
+      # 7. Create new template from the VM + snapshot
+      - name: Create New Template
+        id: template
+        run: |
+          INSTANCE=${{ steps.pick_vm.outputs.instance }}
+          IMAGE=${{ steps.snapshot.outputs.image }}
+
+          if [ -z "$INSTANCE" ] || [ -z "$IMAGE" ]; then
+            echo "❌ Missing required values"
+            exit 1
+          fi
+
+          NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
+          gcloud components update
+          # Create instance template with custom parameters + snapshot image
+          gcloud compute instance-templates create $NEW_TEMPLATE \
+            --project=micro-answer-469207-r4 \
+            --machine-type=n2-standard-2 \
+            --network-interface=network=default,network-tier=PREMIUM,stack-type=IPV4_ONLY \
+            --metadata=startup-script=$'\n' \
+            --maintenance-policy=MIGRATE \
+            --provisioning-model=STANDARD \
+            --service-account=515228593779-compute@developer.gserviceaccount.com \
+            --scopes=https://www.googleapis.com/auth/cloud-platform \
+            --tags=http-server,https-server,lb-health-check \
+            --create-disk=auto-delete=yes,boot=yes,device-name=wp-test-template,image=$IMAGE,mode=rw,size=15,type=pd-balanced \
+            --no-shielded-secure-boot \
+            --shielded-vtpm \
+            --shielded-integrity-monitoring \
+            --reservation-affinity=any
+
+          echo "✅ Created new template: $NEW_TEMPLATE"
+          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
+
+          echo "✅ Created new template: $NEW_TEMPLATE"
+          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
+
+      # 8. Update MIG to use new template + rollout
+      - name: Rollout MIG
+        id: rollout
+        continue-on-error: true
+        run: |
+          echo "🚀 Rolling out new template: ${{ steps.template.outputs.template }}"
+
+          gcloud compute instance-groups managed set-instance-template wp-mig \
+            --zone=us-central1-c \
+            --template=${{ steps.template.outputs.template }}
+
+          gcloud compute instance-groups managed rolling-action replace wp-mig \
+            --zone=us-central1-c \
+            --max-surge=1 \
+            --max-unavailable=0
+
+      # 9. Rollback if rollout failed
+      - name: Rollback MIG
+        if: steps.rollout.outcome == 'failure'
+        run: |
+          echo "⚠️ Rollout failed, rolling back to previous template..."
+          gcloud compute instance-groups managed set-instance-template wp-mig \
+            --zone=us-central1-c \
+            --template=${{ steps.old_template.outputs.old_template }}
+
+          gcloud compute instance-groups managed rolling-action replace wp-mig \
+            --zone=us-central1-c \
+            --max-surge=1 \
+            --max-unavailable=0
+
+          echo "✅ Rollback complete"
