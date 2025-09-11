@@ -49,7 +49,7 @@ jobs:
 
           INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
             --zone=us-central1-c \
-            --format="value(instance)" \
+            --format="value(instance.basename())" \
             | sort | tail -n1)
 
           if [ -z "$INSTANCE" ]; then
@@ -59,6 +59,7 @@ jobs:
 
           echo "✅ Selected instance: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
+
 
       # 6. Snapshot VM boot disk into image
       - name: Snapshot MIG VM
