@@ -107,6 +107,7 @@ jobs:
 
           gcloud compute instance-templates create $NEW_TEMPLATE \
               --source-instance-template=wp-template
+              --global
               --image=$IMAGE
 
           echo "✅ Created new template: $NEW_TEMPLATE"
