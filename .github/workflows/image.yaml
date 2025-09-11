@@ -44,17 +44,17 @@ jobs:
         run: |
           INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
             --zone=us-central1-c \
-            --format="value(instance,instanceStatus)" \
-            --sort-by="~instance" \
-            | grep RUNNING | head -n1 | awk '{print $1}')
+            --format="value(instance)" \
+            | sort | tail -n1)
 
           if [ -z "$INSTANCE" ]; then
-            echo "❌ No running MIG instance found"
+            echo "❌ No MIG instance found"
             exit 1
           fi
 
           echo "✅ Selected instance: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
+
 
       # 6. Snapshot VM boot disk into image
       - name: Snapshot MIG VM
