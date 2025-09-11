@@ -92,32 +92,56 @@ jobs:
           echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
 
-# 7. Create new template (from the VM where push happened)
-- name: Create New Template
-  id: template
-  run: |
-    # Pick the latest healthy MIG VM (the one with the pushed changes)
-    INSTANCE=${{ steps.pick_vm.outputs.instance }}
-    if [ -z "$INSTANCE" ]; then
-      echo "❌ No instance selected"
-      exit 1
-    fi
+      - name: Snapshot MIG VM
+        id: snapshot
+        run: |
+          INSTANCE=${{ steps.pick_vm.outputs.instance }}
 
-    # Use the snapshot image created in Step 6
-    IMAGE=${{ steps.snapshot.outputs.image }}
+          # Get boot disk name
+          DISK_NAME=$(gcloud compute instances describe $INSTANCE \
+            --zone=us-central1-c \
+            --format="value(disks[0].source.basename())")
 
-    # Generate a new template name
-    NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
+          if [ -z "$DISK_NAME" ]; then
+            echo "❌ Could not find boot disk for $INSTANCE"
+            exit 1
+          fi
 
-    # Create a new instance template from the VM and snapshot
-    gcloud compute instance-templates create $NEW_TEMPLATE \
-      --source-instance=$INSTANCE \
-      --source-instance-zone=us-central1-c \
-      --boot-disk-image=$IMAGE
+          echo "📀 Using boot disk: $DISK_NAME from instance: $INSTANCE"
 
-    echo "✅ Created new template: $NEW_TEMPLATE"
-    echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
+          # Create timestamped image
+          IMAGE_NAME="wp-snapshot-$(date +%Y%m%d%H%M%S)"
+          gcloud compute images create $IMAGE_NAME \
+            --source-disk=$DISK_NAME \
+            --source-disk-zone=us-central1-c \
+            --family=wp-snapshots \
+            --storage-location=us \
+            --force
 
+          echo "✅ Created image: $IMAGE_NAME"
+          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+
+      # 7. Create new template from the VM + snapshot
+      - name: Create New Template
+        id: template
+        run: |
+          INSTANCE=${{ steps.pick_vm.outputs.instance }}
+          IMAGE=${{ steps.snapshot.outputs.image }}
+
+          if [ -z "$INSTANCE" ] || [ -z "$IMAGE" ]; then
+            echo "❌ Missing required values"
+            exit 1
+          fi
+
+          NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
+
+          gcloud compute instance-templates create $NEW_TEMPLATE \
+            --source-instance=$INSTANCE \
+            --source-instance-zone=us-central1-c \
+            --boot-disk-image=$IMAGE
+
+          echo "✅ Created new template: $NEW_TEMPLATE"
+          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
 
       # 8. Update MIG to use new template + rollout
       - name: Rollout MIG
