@@ -104,7 +104,7 @@ jobs:
           fi
 
           NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
-
+          gcloud components update -y
           gcloud compute instance-templates create $NEW_TEMPLATE \
               --source-instance-template=wp-template
               --global
