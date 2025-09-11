@@ -47,6 +47,7 @@ jobs:
           gcloud compute instance-groups managed list-instances wp-mig \
             --zone=us-central1-c
 
+          # Pick the last instance (you can change sorting if needed)
           INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
             --zone=us-central1-c \
             --format="value(instance.basename())" \
@@ -60,38 +61,7 @@ jobs:
           echo "✅ Selected instance: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
 
-
       # 6. Snapshot VM boot disk into image
-      - name: Snapshot MIG VM
-        id: snapshot
-        run: |
-          INSTANCE=${{ steps.pick_vm.outputs.instance }}
-
-          # Get boot disk name properly
-          DISK_NAME=$(gcloud compute instances describe $INSTANCE \
-            --zone=us-central1-c \
-            --format="value(disks[0].source.basename())")
-
-          if [ -z "$DISK_NAME" ]; then
-            echo "❌ Could not find boot disk for $INSTANCE"
-            exit 1
-          fi
-
-          echo "📀 Using boot disk: $DISK_NAME from instance: $INSTANCE"
-
-          # Create timestamped image (force because disk is in use)
-          IMAGE_NAME="wp-snapshot-$(date +%Y%m%d%H%M%S)"
-          gcloud compute images create $IMAGE_NAME \
-            --source-disk=$DISK_NAME \
-            --source-disk-zone=us-central1-c \
-            --family=wp-snapshots \
-            --storage-location=us \
-            --force
-
-          echo "✅ Created image: $IMAGE_NAME"
-          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
-
-
       - name: Snapshot MIG VM
         id: snapshot
         run: |
