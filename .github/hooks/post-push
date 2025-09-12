@@ -1,0 +1,25 @@
+#!/bin/bash
+# File: .git/hooks/post-push
+# Make sure to chmod +x .git/hooks/post-push
+
+# Get VM identity from metadata
+VM_NAME=$(curl -s -H "Metadata-Flavor: Google" \
+  http://metadata.google.internal/computeMetadata/v1/instance/name)
+ZONE=$(curl -s -H "Metadata-Flavor: Google" \
+  http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $NF}')
+
+echo "➡️ Marking $VM_NAME ($ZONE) as the last push VM..."
+
+# Remove label from all other MIG VMs
+for i in $(gcloud compute instances list --filter="zone:($ZONE)" --format="value(name)"); do
+  gcloud compute instances remove-labels "$i" \
+    --zone="$ZONE" \
+    --labels=last-push || true
+done
+
+# Add label to the current VM
+gcloud compute instances add-labels "$VM_NAME" \
+  --zone="$ZONE" \
+  --labels=last-push=true
+
+echo "✅ VM $VM_NAME tagged as last-push"
