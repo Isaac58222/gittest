@@ -102,7 +102,7 @@ jobs:
             --version=template=$TEMPLATE \
             --zone=$ZONE \
             --max-unavailable=1 \
-            --min-ready-sec=30
+
 
           echo "✅ Rolling update started with template: $TEMPLATE"
 
