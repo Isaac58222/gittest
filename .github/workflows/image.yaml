@@ -8,22 +8,28 @@ on:
 jobs:
   rollout:
     runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write' # required for WIF
 
     steps:
       # 1. Checkout repo
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Authenticate to GCP
-      - name: Setup GCP
+      # 2. Authenticate to GCP with Workload Identity Federation
+      - id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          token_format: access_token
+          workload_identity_provider: projects/515228593779/locations/global/workloadIdentityPools/wp-test/providers/wp-test
+          service_account: wp-test@micro-answer-469207-r4.iam.gserviceaccount.com
 
+      # 3. Setup gcloud CLI
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      # 3. Pick VM that pushed (has last-push=true label)
+      # 4. Pick VM that pushed (has last-push=true label)
       - name: Pick last-push VM
         id: pick_vm
         run: |
@@ -38,7 +44,9 @@ jobs:
           echo "✅ Selected VM: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
 
-      # 4. Create snapshot → image
+      # 5. Sync repo on VM (covers GitHub console commits too)
+
+      # 6. Snapshot VM boot disk
       - name: Snapshot VM boot disk
         id: snapshot
         run: |
@@ -60,7 +68,7 @@ jobs:
           echo "✅ Created image: $IMAGE_NAME"
           echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
-      # 5. Create new instance template
+      # 7. Create new instance template
       - name: Create new template
         id: template
         run: |
@@ -83,7 +91,7 @@ jobs:
           echo "✅ Created template: $TEMPLATE_NAME"
           echo "template=$TEMPLATE_NAME" >> $GITHUB_OUTPUT
 
-      # 6. Rolling update MIG
+      # 8. Rolling update MIG
       - name: Update MIG
         run: |
           TEMPLATE=${{ steps.template.outputs.template }}
@@ -98,12 +106,11 @@ jobs:
 
           echo "✅ Rolling update started with template: $TEMPLATE"
 
-      # 7. Cleanup old images & templates (keep last 5)
+      # 9. Cleanup old images & templates (keep last 5)
       - name: Cleanup old resources
         run: |
           echo "🧹 Cleaning up old images and templates..."
 
-          # Delete old images (keep last 5)
           OLD_IMAGES=$(gcloud compute images list \
             --filter="family=wp-snapshots" \
             --sort-by=~creationTimestamp \
@@ -115,7 +122,6 @@ jobs:
             gcloud compute images delete $img --quiet || true
           done
 
-          # Delete old templates (keep last 5)
           OLD_TEMPLATES=$(gcloud compute instance-templates list \
             --filter="name~^wp-template-" \
             --sort-by=~creationTimestamp \
