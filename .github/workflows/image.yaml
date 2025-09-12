@@ -1,4 +1,4 @@
-name: MIG Rollout from VM Snapshot
+name: MIG Rollout from Last Push VM
 
 on:
   push:
@@ -6,18 +6,18 @@ on:
       - main
 
 jobs:
-  build-image:
+  rollout:
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
-      id-token: 'write'
+      id-token: 'write' # required for WIF
 
     steps:
       # 1. Checkout repo
-      - name: Checkout Repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Authenticate with Workload Identity Federation
+      # 2. Authenticate to GCP with Workload Identity Federation
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -25,65 +25,42 @@ jobs:
           workload_identity_provider: projects/515228593779/locations/global/workloadIdentityPools/wp-test/providers/wp-test
           service_account: wp-test@micro-answer-469207-r4.iam.gserviceaccount.com
 
-      # 3. Setup gcloud
-      - name: Setup gcloud
+      # 3. Setup gcloud CLI
+      - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      # 4. Capture current template (for rollback)
-      - name: Capture Current Template
-        id: old_template
-        run: |
-          OLD_TEMPLATE=$(gcloud compute instance-groups managed describe wp-mig \
-            --zone=us-central1-c \
-            --format="value(instanceTemplate)")
-          echo "old_template=$OLD_TEMPLATE" >> $GITHUB_OUTPUT
-          echo "📦 Current MIG template: $OLD_TEMPLATE"
-
-      # 5. Pick newest healthy MIG VM
-      - name: Select MIG VM
+      # 4. Pick VM that pushed (has last-push=true label)
+      - name: Pick last-push VM
         id: pick_vm
         run: |
-          echo "🔎 Listing MIG instances..."
-          gcloud compute instance-groups managed list-instances wp-mig \
-            --zone=us-central1-c
-
-          # Pick the last instance (you can change sorting if needed)
-          INSTANCE=$(gcloud compute instance-groups managed list-instances wp-mig \
-            --zone=us-central1-c \
-            --format="value(instance.basename())" \
-            | sort | tail -n1)
-
-          if [ -z "$INSTANCE" ]; then
-            echo "❌ No MIG instance found"
+          INSTANCE=$(gcloud compute instances list \
+            --filter="labels.last-push=true" \
+            --format="value(name)" \
+            --limit=1)
+          if [[ -z "$INSTANCE" ]]; then
+            echo "❌ No VM labeled as last-push!"
             exit 1
           fi
-
-          echo "✅ Selected instance: $INSTANCE"
+          echo "✅ Selected VM: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
 
-      # 6. Snapshot VM boot disk into image
-      - name: Snapshot MIG VM
+      # 5. Sync repo on VM (covers GitHub console commits too)
+
+      # 6. Snapshot VM boot disk
+      - name: Snapshot VM boot disk
         id: snapshot
         run: |
           INSTANCE=${{ steps.pick_vm.outputs.instance }}
+          ZONE=us-central1-c
 
-          # Get boot disk name
           DISK_NAME=$(gcloud compute instances describe $INSTANCE \
-            --zone=us-central1-c \
+            --zone=$ZONE \
             --format="value(disks[0].source.basename())")
 
-          if [ -z "$DISK_NAME" ]; then
-            echo "❌ Could not find boot disk for $INSTANCE"
-            exit 1
-          fi
-
-          echo "📀 Using boot disk: $DISK_NAME from instance: $INSTANCE"
-
-          # Create timestamped image
           IMAGE_NAME="wp-snapshot-$(date +%Y%m%d%H%M%S)"
           gcloud compute images create $IMAGE_NAME \
             --source-disk=$DISK_NAME \
-            --source-disk-zone=us-central1-c \
+            --source-disk-zone=$ZONE \
             --family=wp-snapshots \
             --storage-location=us \
             --force
@@ -91,72 +68,69 @@ jobs:
           echo "✅ Created image: $IMAGE_NAME"
           echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
-      # 7. Create new template from the VM + snapshot
-      - name: Create New Template
+      # 7. Create new instance template
+      - name: Create new template
         id: template
         run: |
-          INSTANCE=${{ steps.pick_vm.outputs.instance }}
-          IMAGE=${{ steps.snapshot.outputs.image }}
+          IMAGE_NAME=${{ steps.snapshot.outputs.image }}
+          TEMPLATE_NAME="wp-template-$(date +%Y%m%d%H%M%S)"
 
-          if [ -z "$INSTANCE" ] || [ -z "$IMAGE" ]; then
-            echo "❌ Missing required values"
-            exit 1
-          fi
-
-          NEW_TEMPLATE="wp-template-$(date +%Y%m%d%H%M%S)"
-          gcloud components update
-          # Create instance template with custom parameters + snapshot image
-          gcloud compute instance-templates create $NEW_TEMPLATE \
+          gcloud compute instance-templates create $TEMPLATE_NAME \
             --project=micro-answer-469207-r4 \
             --machine-type=n2-standard-2 \
             --network-interface=network=default,network-tier=PREMIUM,stack-type=IPV4_ONLY \
-            --metadata=startup-script=$'\n' \
             --maintenance-policy=MIGRATE \
             --provisioning-model=STANDARD \
             --service-account=515228593779-compute@developer.gserviceaccount.com \
             --scopes=https://www.googleapis.com/auth/cloud-platform \
             --tags=http-server,https-server,lb-health-check \
-            --create-disk=auto-delete=yes,boot=yes,device-name=wp-test-template,image=$IMAGE,mode=rw,size=15,type=pd-balanced \
-            --no-shielded-secure-boot \
-            --shielded-vtpm \
-            --shielded-integrity-monitoring \
+            --create-disk=auto-delete=yes,boot=yes,device-name=wp-test-template,image=$IMAGE_NAME,mode=rw,size=15,type=pd-balanced \
+            --no-shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring \
             --reservation-affinity=any
 
-          echo "✅ Created new template: $NEW_TEMPLATE"
-          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
+          echo "✅ Created template: $TEMPLATE_NAME"
+          echo "template=$TEMPLATE_NAME" >> $GITHUB_OUTPUT
 
-          echo "✅ Created new template: $NEW_TEMPLATE"
-          echo "template=$NEW_TEMPLATE" >> $GITHUB_OUTPUT
-
-      # 8. Update MIG to use new template + rollout
-      - name: Rollout MIG
-        id: rollout
-        continue-on-error: true
+      # 8. Rolling update MIG
+      - name: Update MIG
         run: |
-          echo "🚀 Rolling out new template: ${{ steps.template.outputs.template }}"
+          TEMPLATE=${{ steps.template.outputs.template }}
+          MIG_NAME="wp-mig"
+          ZONE=us-central1-c
 
-          gcloud compute instance-groups managed set-instance-template wp-mig \
-            --zone=us-central1-c \
-            --template=${{ steps.template.outputs.template }}
+          gcloud compute instance-groups managed rolling-action start-update $MIG_NAME \
+            --version=template=$TEMPLATE \
+            --zone=$ZONE \
+            --max-unavailable=1 \
 
-          gcloud compute instance-groups managed rolling-action replace wp-mig \
-            --zone=us-central1-c \
-            --max-surge=1 \
-            --max-unavailable=0
 
-      # 9. Rollback if rollout failed
-      - name: Rollback MIG
-        if: steps.rollout.outcome == 'failure'
+          echo "✅ Rolling update started with template: $TEMPLATE"
+
+      # 9. Cleanup old images & templates (keep last 5)
+      - name: Cleanup old resources
         run: |
-          echo "⚠️ Rollout failed, rolling back to previous template..."
-          gcloud compute instance-groups managed set-instance-template wp-mig \
-            --zone=us-central1-c \
-            --template=${{ steps.old_template.outputs.old_template }}
+          echo "🧹 Cleaning up old images and templates..."
 
-          gcloud compute instance-groups managed rolling-action replace wp-mig \
-            --zone=us-central1-c \
-            --max-surge=1 \
-            --max-unavailable=0 \
-            --replacement-method=substitute    
+          OLD_IMAGES=$(gcloud compute images list \
+            --filter="family=wp-snapshots" \
+            --sort-by=~creationTimestamp \
+            --format="value(name)" \
+            | tail -n +6)
 
-          echo "✅ Rollback complete"
+          for img in $OLD_IMAGES; do
+            echo "🗑 Deleting old image: $img"
+            gcloud compute images delete $img --quiet || true
+          done
+
+          OLD_TEMPLATES=$(gcloud compute instance-templates list \
+            --filter="name~^wp-template-" \
+            --sort-by=~creationTimestamp \
+            --format="value(name)" \
+            | tail -n +6)
+
+          for tmpl in $OLD_TEMPLATES; do
+            echo "🗑 Deleting old template: $tmpl"
+            gcloud compute instance-templates delete $tmpl --quiet || true
+          done
+
+          echo "✅ Cleanup complete"
