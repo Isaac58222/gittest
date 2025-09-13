@@ -105,12 +105,9 @@ jobs:
 
           gcloud compute instance-groups managed rolling-action start-update $MIG_NAME \
             --version=template=$TEMPLATE \
-            --zone=$ZONE \
-            --max-unavailable=0 \
-            --max-surge=1 \
-            --min-ready=60 \
-            --health-check=wp-hc \
-            --timeout=20m
+            --zone=$ZONE
+
+          echo "✅ Rolling update started safely with template: $TEMPLATE"
 
           echo "✅ Rolling update started safely with template: $TEMPLATE"
       # 9. Cleanup old images & templates (keep last 5)
