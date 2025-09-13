@@ -99,7 +99,7 @@ jobs:
         run: |
           TEMPLATE=${{ steps.template.outputs.template }}
           echo "🚀 Starting zero-downtime rollout..."
-          gcloud beta compute instance-groups managed rolling-action start-update wp-mig \
+          gcloud compute instance-groups managed rolling-action start-update wp-mig \
               --project=micro-answer-469207-r4 \
               --zone=us-central1-c \
               --type=opportunistic \
