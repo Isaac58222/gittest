@@ -99,12 +99,9 @@ jobs:
         run: |
           TEMPLATE=${{ steps.template.outputs.template }}
           echo "🚀 Starting zero-downtime rollout..."
-          gcloud compute instance-groups managed rolling-action start-update wp-mig \
-              --project=micro-answer-469207-r4 \
-              --zone=us-central1-c \
-              --type=opportunistic \
-              --version=$TEMPLATE\
-
+          gcloud compute instance-groups managed set-instance-template INSTANCE_GROUP_NAME \
+              --template=$TEMPLATE \
+              --zone=us-central1-c
           gcloud compute instance-groups managed rolling-action replace wp-mig \
             --zone=us-central1-c \
             --max-surge=1 \
