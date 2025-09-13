@@ -98,18 +98,20 @@ jobs:
       - name: Update MIG
         run: |
           TEMPLATE=${{ steps.template.outputs.template }}
-          MIG_NAME="wp-mig"
-          ZONE="us-central1-c"
-
           echo "🚀 Starting zero-downtime rollout..."
+          gcloud beta compute instance-groups managed rolling-action start-update wp-mig \
+              --project=micro-answer-469207-r4 \
+              --zone=us-central1-c \
+              --type=opportunistic \
+              --version=$TEMPLATE\
 
-          gcloud compute instance-groups managed rolling-action start-update $MIG_NAME \
-            --version=template=$TEMPLATE \
-            --zone=$ZONE
-
+          gcloud compute instance-groups managed rolling-action replace wp-mig \
+            --zone=us-central1-c \
+            --max-surge=1 \
+            --max-unavailable=0 \
+            --replacement-method=substitute  
           echo "✅ Rolling update started safely with template: $TEMPLATE"
 
-          echo "✅ Rolling update started safely with template: $TEMPLATE"
       # 9. Cleanup old images & templates (keep last 5)
       - name: Cleanup old resources
         run: |
