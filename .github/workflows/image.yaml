@@ -94,21 +94,25 @@ jobs:
           echo "✅ Created template: $TEMPLATE_NAME"
           echo "template=$TEMPLATE_NAME" >> $GITHUB_OUTPUT
 
-      # 8. Rolling update MIG
+ # 8. Rolling update MIG with zero downtime
       - name: Update MIG
         run: |
           TEMPLATE=${{ steps.template.outputs.template }}
           MIG_NAME="wp-mig"
-          ZONE=us-central1-c
+          ZONE="us-central1-c"
+
+          echo "🚀 Starting zero-downtime rollout..."
 
           gcloud compute instance-groups managed rolling-action start-update $MIG_NAME \
             --version=template=$TEMPLATE \
             --zone=$ZONE \
-            --max-unavailable=1 \
+            --max-unavailable=0 \
+            --max-surge=1 \
+            --min-ready=60 \
+            --health-check=wp-hc \
+            --timeout=20m
 
-
-          echo "✅ Rolling update started with template: $TEMPLATE"
-
+          echo "✅ Rolling update started safely with template: $TEMPLATE"
       # 9. Cleanup old images & templates (keep last 5)
       - name: Cleanup old resources
         run: |
