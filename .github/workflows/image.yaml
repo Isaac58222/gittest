@@ -35,12 +35,15 @@ jobs:
         run: |
           INSTANCE=$(gcloud compute instances list \
             --filter="labels.last-push=true" \
-            --format="value(name)" \
-            --limit=1)
+            --format="csv(name,lastStartTimestamp)" \
+            --sort-by="~lastStartTimestamp" \
+            --limit=1 | tail -n +2 | cut -d, -f1)
+
           if [[ -z "$INSTANCE" ]]; then
             echo "❌ No VM labeled as last-push!"
             exit 1
           fi
+
           echo "✅ Selected VM: $INSTANCE"
           echo "instance=$INSTANCE" >> $GITHUB_OUTPUT
 
